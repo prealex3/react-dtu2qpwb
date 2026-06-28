@@ -439,18 +439,17 @@ function parseEMAMeds(data, maxAge) {
   const records = Array.isArray(data) ? data : (data?.data || []);
   const out = [];
   for (const r of records) {
-    if (r.authorisation_status !== "Authorised") continue;
-    const dateStr = r.last_updated_date || r.opinion_adopted_date ||
-                    r.european_commission_decision_date || "";
+    if (r.medicine_status !== "Authorised") continue;
+    const dateStr = r.european_commission_decision_date || r.marketing_authorisation_date || r.opinion_adopted_date || r.last_updated_date || "";
     const age = daysAgo(dateStr);
     if (age === null || age > maxAge) continue;
 
-    const isPrime      = r.prime_priority_medicine === "yes";
-    const isOrphan     = r.orphan_medicine === "yes";
-    const isAdvTherapy = r.advanced_therapy === "yes";
-    const isAccelerated= r.accelerated_assessment === "yes";
+    const isPrime      = r.prime_priority_medicine === "yes" || r.prime_priority_medicine === "Yes";
+    const isOrphan     = r.orphan_medicine === "yes" || r.orphan_medicine === "Yes";
+    const isAdvTherapy = r.advanced_therapy === "yes" || r.advanced_therapy === "Yes";
+    const isAccelerated= r.accelerated_assessment === "yes" || r.accelerated_assessment === "Yes";
     const substance    = r.active_substance || "";
-    const indication   = r.therapeutic_indication || r.condition_indication || "";
+    const indication   = r.therapeutic_indication || r.condition_indication || r.therapeutic_area_mesh || "";
 
     const rec = {
       indication, substance, isPrime, isOrphan, isAdvTherapy,
@@ -472,8 +471,8 @@ function parseEMAMeds(data, maxAge) {
     out.push({
       id: r.ema_product_number || `ema-m-${r.medicine_name}`,
       tier,
-      name: r.medicine_name || "Unknown",
-      company: r.marketing_authorisation_holder_company_name || "",
+      name: r.name_of_medicine || r.medicine_name || "Unknown",
+      company: r.marketing_authorisation_developer_applicant_holder || r.marketing_authorisation_holder_company_name || "",
       indication: indication.slice(0,250),
       substance: substance.slice(0,120),
       age, dateStr,
