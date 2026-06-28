@@ -19,6 +19,47 @@ const SOURCES = {
   EMA_MEDS:  "https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json",
 };
 
+
+// ─── PDUFA CALENDAR ───────────────────────────────────────────────────────────
+// Source: Company press releases + SEC filings (public domain)
+// Updated manually — add new entries as companies announce
+const PDUFA_CALENDAR = [
+  // ── Q3 2026 ──
+  { date:"2026-06-30", ticker:"IONS",  drug:"Olezarsen (TRYNGOLZA)", company:"Ionis Pharmaceuticals", indication:"Severe hypertriglyceridemia", type:"NDA", priority:true,  orphan:false, daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
+  { date:"2026-07-29", ticker:"AMGN",  drug:"Tavneos (avacopan)", company:"Amgen/CSL", indication:"ANCA-associated vasculitis EU hearing", type:"EMA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/AMGN" },
+  { date:"2026-08-12", ticker:"RVMD",  drug:"Daraxonrasib", company:"Revolution Medicines", indication:"Metastatic pancreatic cancer (2L PDAC)", type:"NDA rolling", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RVMD" },
+  { date:"2026-08-24", ticker:"BIIB",  drug:"Lecanemab (LEQEMBI IQLIK)", company:"Biogen/Eisai", indication:"Early Alzheimer's disease (SC autoinjector)", type:"sBLA", priority:false, orphan:false, daysOut:null, url:"https://finance.yahoo.com/quote/BIIB" },
+  { date:"2026-09-15", ticker:"AAPG",  drug:"Lisaftoclax (APG-2575)", company:"Ascentage Pharma", indication:"Higher-risk MDS (GLORA-4 Phase 3)", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/AAPG" },
+  { date:"2026-09-30", ticker:"ALNY",  drug:"Vutrisiran (AMVUTTRA)", company:"Alnylam", indication:"ATTR cardiomyopathy label expansion", type:"sNDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/ALNY" },
+  { date:"2026-10-15", ticker:"SRPT",  drug:"Elevidys (delandistrogene)", company:"Sarepta Therapeutics", indication:"Duchenne muscular dystrophy (ages 4-7)", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/SRPT" },
+  { date:"2026-10-22", ticker:"BLUE",  drug:"Skysona (elivaldogene autotemcel)", company:"Bluebird Bio", indication:"Cerebral adrenoleukodystrophy", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/BLUE" },
+  { date:"2026-11-10", ticker:"NTLA",  drug:"NTLA-2001", company:"Intellia Therapeutics", indication:"Transthyretin amyloidosis (ATTR)", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/NTLA" },
+  { date:"2026-12-05", ticker:"RARE",  drug:"UX111", company:"Ultragenyx", indication:"Sanfilippo syndrome type A (MPS IIIA)", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RARE" },
+  // ── Q1 2027 ──
+  { date:"2027-01-15", ticker:"RVMD",  drug:"Daraxonrasib", company:"Revolution Medicines", indication:"Metastatic PDAC — FDA full approval decision", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RVMD" },
+  { date:"2027-02-20", ticker:"IONS",  drug:"Tominersen (TRYNGOLZA)", company:"Ionis Pharmaceuticals", indication:"Huntington's disease", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
+  { date:"2027-03-10", ticker:"BMRN",  drug:"Vosoritide", company:"BioMarin", indication:"Achondroplasia adult label expansion", type:"sNDA", priority:false, orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/BMRN" },
+];
+
+function computePDUFA() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  return PDUFA_CALENDAR.map(p => {
+    const d = new Date(p.date);
+    const diff = Math.round((d - today) / 86400000);
+    return { ...p, daysOut: diff };
+  }).filter(p => p.daysOut >= -7) // show up to 7 days past
+    .sort((a,b) => a.daysOut - b.daysOut);
+}
+
+function pdufaTier(p) {
+  if (p.daysOut <= 7)  return { tier:1, label:"🔴 TIER 1", reason:"PDUFA Decision THIS WEEK", color:"#dc2626" };
+  if (p.daysOut <= 30) return { tier:1, label:"🔴 TIER 1", reason:"PDUFA Decision within 30 days", color:"#dc2626" };
+  if (p.daysOut <= 60) return { tier:2, label:"🟡 TIER 2", reason:"PDUFA Decision within 60 days", color:"#d97706" };
+  if (p.daysOut <= 90) return { tier:2, label:"🟡 TIER 2", reason:"PDUFA Decision within 90 days", color:"#d97706" };
+  return { tier:3, label:"🟢 TIER 3", reason:`PDUFA in ${p.daysOut} days — build position`, color:"#059669" };
+}
+
 // ─── SCORING KEYWORDS ─────────────────────────────────────────────────────────
 const HV_INDICATIONS = [
   "cancer","carcinoma","lymphoma","leukaemia","leukemia","sarcoma","glioma",
@@ -731,6 +772,142 @@ function Modal({s, onClose}) {
 }
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
+
+// ─── PDUFA CARD ───────────────────────────────────────────────────────────────
+function PDUFACard({p, onClick}) {
+  const tier = pdufaTier(p);
+  const tc = TC[tier.tier]||TC[3];
+  const urgency = p.daysOut <= 0 ? "⚡ DECISION EXPECTED" :
+                  p.daysOut === 1 ? "⚡ TOMORROW" :
+                  p.daysOut <= 7  ? `⚡ ${p.daysOut} DAYS` :
+                  `${p.daysOut} days`;
+  const urgColor = p.daysOut <= 7 ? "#dc2626" : p.daysOut <= 30 ? "#d97706" : "#059669";
+
+  return (
+    <div onClick={()=>onClick(p)} style={{
+      background:"#fff", borderRadius:13,
+      border:"1.5px solid #e2e8f0",
+      borderLeft:`4px solid ${tc.accent}`,
+      padding:"14px 16px", cursor:"pointer", marginBottom:10,
+      transition:"all .15s"
+    }}
+    onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 6px 24px rgba(0,0,0,.1)";e.currentTarget.style.transform="translateY(-1px)";}}
+    onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.transform="none";}}>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
+        <span style={{fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,
+          background:tc.bg,color:tc.text,border:`1.5px solid ${tc.border}`}}>{tier.label}</span>
+        <span style={{fontSize:11,fontWeight:800,padding:"2px 8px",borderRadius:5,
+          color:urgColor,background:urgColor+"15"}}>{urgency}</span>
+        <span style={{fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:5,
+          background:"#f1f5f9",color:"#475569"}}>{p.type}</span>
+        {p.priority && <span style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:4,background:"#fef2f2",color:"#dc2626"}}>Priority Review</span>}
+        {p.orphan && <span style={{fontSize:10,fontWeight:700,padding:"2px 6px",borderRadius:4,background:"#f0fdf4",color:"#059669"}}>Orphan</span>}
+      </div>
+      <div style={{fontSize:16,fontWeight:900,color:"#0f172a",marginBottom:2}}>{p.drug}</div>
+      <div style={{fontSize:12,fontWeight:700,color:"#3b82f6",marginBottom:4}}>{p.company} ({p.ticker})</div>
+      <div style={{fontSize:12,color:"#475569",lineHeight:1.5,marginBottom:6}}>{p.indication}</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{fontSize:11,padding:"4px 8px",borderRadius:6,background:tc.bg,color:tc.text,fontWeight:600}}>
+          📅 PDUFA: {new Date(p.date).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}
+        </div>
+        <div style={{fontSize:11,color:"#94a3b8"}}>{tier.reason}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PDUFA MODAL ──────────────────────────────────────────────────────────────
+function PDUFAModal({p, onClose}) {
+  if (!p) return null;
+  const tier = pdufaTier(p);
+  const tc = TC[tier.tier]||TC[3];
+  const dStr = new Date(p.date).toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+  const steps = p.daysOut <= 30 ? [
+    "Open IBKR — search " + p.ticker + " immediately",
+    "Check current price vs analyst consensus target",
+    "Set position size: max 7-10% of portfolio",
+    "Set stop-loss at -20% from entry",
+    "Set price alert for PDUFA date (day before)",
+    "FDA decisions can come EARLY — watch all week",
+    "If APPROVED: hold through initial pop, reassess at +30%",
+    "If CRL (rejected): exit immediately, stop-loss activates"
+  ] : [
+    "Add to watchlist with PDUFA date reminder",
+    "Research company — analyst consensus, cash runway",
+    "Build thesis over next 2-4 weeks",
+    "Enter position 30-45 days before PDUFA date",
+    "Typical pre-PDUFA run-up: 15-40% if positive Phase 3 data",
+    "Position sizing: start small, add as date approaches"
+  ];
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(15,23,42,.7)",
+      zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:12}}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:"#fff",borderRadius:16,maxWidth:560,width:"100%",
+        maxHeight:"91vh",overflowY:"auto",
+        boxShadow:"0 32px 80px rgba(0,0,0,.35)",
+        border:`2px solid ${tc.accent}`
+      }}>
+        <div style={{padding:"16px 18px 12px",borderBottom:"1px solid #f1f5f9"}}>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <div>
+              <div style={{fontSize:20,fontWeight:900,color:"#0f172a",marginBottom:3}}>{p.drug}</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#3b82f6"}}>{p.company} ({p.ticker})</div>
+            </div>
+            <button onClick={onClose} style={{background:"#f1f5f9",border:"none",borderRadius:8,
+              width:33,height:33,cursor:"pointer",fontSize:18,color:"#64748b",
+              display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>×</button>
+          </div>
+        </div>
+        <div style={{padding:"16px 18px"}}>
+          <div style={{background:tc.bg,border:`1.5px solid ${tc.border}`,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
+            <div style={{fontWeight:800,color:tc.text,fontSize:14,marginBottom:4}}>
+              📅 PDUFA Date: {dStr}
+            </div>
+            <div style={{fontSize:12,color:tc.text+"aa"}}>
+              {p.daysOut <= 0 ? "⚡ Decision expected — watch FDA.gov" :
+               `${p.daysOut} days until decision — ${tier.reason}`}
+            </div>
+          </div>
+          {[["Indication",p.indication],["Application Type",p.type],
+            ["Review Status",(p.priority?"Priority Review":"Standard Review")+(p.orphan?" + Orphan Drug":"")]
+          ].map(([l,v])=>(
+            <div key={l} style={{marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:".07em",marginBottom:3}}>{l}</div>
+              <div style={{fontSize:12,color:"#334155"}}>{v}</div>
+            </div>
+          ))}
+          <div style={{fontSize:13,fontWeight:800,color:"#0f172a",marginBottom:10}}>
+            ⚡ {p.daysOut <= 30 ? "IMMEDIATE" : "PRE-PDUFA"} Protocol
+          </div>
+          {steps.map((s,i)=>(
+            <div key={i} style={{display:"flex",gap:9,marginBottom:8,alignItems:"flex-start"}}>
+              <span style={{minWidth:21,height:21,borderRadius:"50%",background:tc.accent,color:"#fff",
+                fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>{i+1}</span>
+              <span style={{fontSize:12,color:"#475569",lineHeight:1.6}}>{s}</span>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:7,marginTop:14}}>
+            <a href={p.url} target="_blank" rel="noopener noreferrer"
+              style={{flex:1,padding:"10px",background:"#7c3aed",color:"#fff",borderRadius:8,
+                textDecoration:"none",fontSize:12,fontWeight:700,textAlign:"center"}}>
+              📊 {p.ticker} on Yahoo
+            </a>
+            <a href={`https://www.google.com/search?q=${encodeURIComponent(p.drug+" "+p.company+" FDA PDUFA 2026")}`}
+              target="_blank" rel="noopener noreferrer"
+              style={{flex:1,padding:"10px",background:"#3b82f6",color:"#fff",borderRadius:8,
+                textDecoration:"none",fontSize:12,fontWeight:700,textAlign:"center"}}>
+              🔍 Research
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [signals,    setSignals]    = React.useState([]);
   const [loading,    setLoading]    = React.useState(false);
@@ -741,6 +918,7 @@ export default function App() {
   const [maxAge,     setMaxAge]     = React.useState(30);
   const [search,     setSearch]     = React.useState("");
   const [usingDemo,  setUsingDemo]  = React.useState(false);
+  const [selectedPdufa, setSelectedPdufa] = React.useState(null);
   const [lastRefresh,setLastRefresh]= React.useState(null);
   const fetchID = React.useRef(0);
 
@@ -889,6 +1067,7 @@ export default function App() {
               {t:1, label:"🔴 Buy Now", c:"#dc2626"},
               {t:2, label:"🟡 Analyse", c:"#d97706"},
               {t:3, label:"🟢 Watch",   c:"#059669"},
+              {t:99, label:"📅 PDUFA",  c:"#7c3aed"},
             ].map(({t,label,c}) => (
               <button key={t} onClick={() => setFilterTier(t)} style={{
                 background: filterTier===t ? c : "transparent",
@@ -897,7 +1076,7 @@ export default function App() {
                 borderRadius:"7px 7px 0 0", borderBottom:"none",
                 padding:"6px 13px", fontSize:11, fontWeight:700, cursor:"pointer"
               }}>
-                {label} ({t===0 ? signals.length : counts[t]})
+                {label} ({t===0 ? signals.length : t===99 ? computePDUFA().length : counts[t]})
               </button>
             ))}
           </div>
@@ -978,8 +1157,21 @@ export default function App() {
           </div>
         )}
 
+        {/* PDUFA CALENDAR VIEW */}
+        {filterTier === 99 && (
+          <div>
+            <div style={{background:"#f5f3ff",border:"1.5px solid #c4b5fd",borderRadius:9,
+              padding:"10px 14px",marginBottom:12,fontSize:12,color:"#5b21b6",fontWeight:600}}>
+              📅 {computePDUFA().length} upcoming PDUFA decisions — binary events. Stock moves 30-60% on approval/rejection. Enter position 30-45 days before.
+            </div>
+            {computePDUFA().map(p=>(
+              <PDUFACard key={p.ticker+p.date} p={p} onClick={setSelectedPdufa}/>
+            ))}
+          </div>
+        )}
+
         {/* SIGNAL CARDS */}
-        {!loading && filtered.map(s => (
+        {filterTier !== 99 && !loading && filtered.map(s => (
           <Card key={s.id} s={s} onClick={setSelected}/>
         ))}
 
