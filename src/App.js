@@ -15,8 +15,8 @@ const PROXIES = [
 
 const SOURCES = {
   FDA:       "https://api.fda.gov/drug/drugsfda.json",
-  EMA_ORPHAN:"https://www.ema.europa.eu/sites/default/files/medicines-output-orphan_designations-json-report_en.json",
-  EMA_MEDS:  "https://www.ema.europa.eu/sites/default/files/medicines-output-medicines_json-report_en.json",
+  EMA_ORPHAN:"https://www.ema.europa.eu/en/documents/report/medicines-output-orphan_designations-json-report_en.json",
+  EMA_MEDS:  "https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json",
 };
 
 // ─── SCORING KEYWORDS ─────────────────────────────────────────────────────────
