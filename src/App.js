@@ -2,7 +2,11 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
 // Multiple proxies tried in sequence — first one that works is used
+// Vercel Edge proxy (our own — no CORS, no rate limits, 30min cache)
+const VERCEL_PROXY = '/api/proxy?url=';
+
 const PROXIES = [
+  (u) => `${VERCEL_PROXY}${encodeURIComponent(u)}`,   // Our Vercel proxy — priority #1
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
