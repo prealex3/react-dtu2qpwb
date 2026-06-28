@@ -34,6 +34,54 @@ const HV_MODALITIES = [
   "peptide","viral vector","stem cell","rna interference"
 ];
 
+// ─── SPONSOR → TICKER MAPPING ───────────────────────────────────────────────
+const SPONSOR_TICKER = {
+  // Big Pharma
+  "PFIZER": "PFE", "MERCK": "MRK", "MERCK SHARP": "MRK", "MERCK SHARP DOHME": "MRK",
+  "GLAXOSMITHKLINE": "GSK", "GSK": "GSK", "BRISTOL": "BMY", "BRISTOL-MYERS": "BMY",
+  "ABBVIE": "ABBV", "JOHNSON": "JNJ", "ELI LILLY": "LLY", "LILLY": "LLY",
+  "ASTRAZENECA": "AZN", "NOVARTIS": "NVS", "ROCHE": "RHHBY", "SANOFI": "SNY",
+  "NOVO NORDISK": "NVO", "BAYER": "BAYRY", "TAKEDA": "TAK", "AMGEN": "AMGN",
+  "BIOGEN": "BIIB", "GILEAD": "GILD", "REGENERON": "REGN", "VERTEX": "VRTX",
+  "MODERNA": "MRNA", "BIONTECH": "BNTX", "SEAGEN": "SGEN", "ALEXION": "ALXN",
+
+  // Mid/Small Biotech — frequent FDA filers
+  "IONIS": "IONS", "IONIS PHARMS": "IONS", "IONIS PHARMACEUTICALS": "IONS",
+  "ZEALAND": "ZEAL", "ZEALAND PHARMA": "ZEAL",
+  "PROVENTION": "PRVB", "PROVENTION BIO": "PRVB",
+  "BLUEPRINT": "BPMC", "BLUEPRINT MEDICINES": "BPMC",
+  "ALNYLAM": "ALNY", "ULTRAGENYX": "RARE", "SAREPTA": "SRPT",
+  "BIOMARIN": "BMRN", "BLUEBIRD": "BLUE", "CRISPR": "CRSP",
+  "EDITAS": "EDIT", "INTELLIA": "NTLA", "BEAM": "BEAM",
+  "ARVINAS": "ARVN", "KYMERA": "KYMR", "C4 THERAPEUTICS": "CCCC",
+  "RELAY": "RLAY", "BLACK DIAMOND": "BDTX", "MERUS": "MRUS",
+  "IMAGO": "IMGO", "KARUNA": "KRTX", "CEREVEL": "CERE",
+  "SAGE": "SAGE", "NEUROCRINE": "NBIX", "INTRA-CELLULAR": "ITCI",
+  "ACADIA": "ACAD", "SUPERNUS": "SUPN", "PUMA": "PBYI",
+  "ATHENEX": "ATNX", "DOVA": "DOVA", "PROTAGONIST": "PTGX",
+  "GLOBAL BLOOD": "GBT", "FORMA": "FMTX", "TURNING POINT": "TPTX",
+  "MIRATI": "MRTX", "KARTOS": "private", "REVOLUTION MEDICINES": "RVMD",
+  "ASCENTAGE": "AAPG", "OCULIS": "OCS", "SOLID BIOSCIENCES": "SLDB",
+  "CHINOOK": "KDNY", "PRAXIS": "PRAX", "XENON": "XENE",
+  "RHYTHM": "RYTM", "RECORDATI": "RCDTF", "SOBI": "SOBI",
+  "GRIFOLS": "GRFS", "OCTAPHARMA": "private", "KEDRION": "private",
+  "HIKMA": "HKMPY", "TEVA": "TEVA", "MYLAN": "VTRS", "VIATRIS": "VTRS",
+  "SUN PHARMA": "SUNPHARMA", "DR REDDY": "RDY", "CIPLA": "CIPLA",
+};
+
+function findTicker(sponsorName, companyField) {
+  // First check company field for explicit ticker in parentheses
+  const companyTicker = (companyField || "").match(/\(([A-Z]{2,5})\)/)?.[1];
+  if (companyTicker) return companyTicker;
+
+  // Search sponsor name against mapping
+  const upper = (sponsorName || "").toUpperCase();
+  for (const [key, ticker] of Object.entries(SPONSOR_TICKER)) {
+    if (upper.includes(key)) return ticker === "private" ? null : ticker;
+  }
+  return null;
+}
+
 // ─── DEMO DATA — real signals, always shown if live fails ────────────────────
 const DEMO = [
   { id:"d1", age:0, dateStr:"28/06/2026", source:"🇺🇸 FDA",
@@ -321,6 +369,7 @@ function parseFDA(data, maxAge) {
       status: `FDA ${appType} Approval — ${isPriority?"Priority Review":"Standard"}${isOrphan?" + Orphan":""}${isBreakthrough?" + Breakthrough":""}`,
       source: "🇺🇸 FDA",
       isOrphan, isAdvanced: isAdvTherapy,
+      fdaTicker: findTicker(app.sponsor_name, ""),
       url: `https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=${appNum.replace(/\D/g,"")}`,
       tags: [...new Set(tags)].filter(t => t.toUpperCase() !== "AND" && t.length > 1).slice(0,7)
     });
@@ -572,10 +621,10 @@ function Modal({s, onClose}) {
   if (!s) return null;
   const tc    = TC[s.tier.tier]||TC[3];
   const proto = PROTOCOLS[s.tier.tier]||PROTOCOLS[3];
-  const ticker = s.company?.match(/\(([A-Z]{2,5})\)/)?.[1];
+  const ticker = s.fdaTicker || findTicker(s.company, s.company);
   const yahooURL = ticker
     ? `https://finance.yahoo.com/quote/${ticker}`
-    : `https://finance.yahoo.com/lookup?s=${encodeURIComponent(s.name)}`;
+    : `https://finance.yahoo.com/lookup?s=${encodeURIComponent(s.company || s.name)}`;
   const googleURL = `https://www.google.com/search?q=${encodeURIComponent((s.name||"")+" "+(s.company||"")+" stock biotech 2026")}`;
 
   return (
