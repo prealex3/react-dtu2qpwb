@@ -2,14 +2,16 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
 // Multiple proxies tried in sequence — first one that works is used
-// Vercel Edge proxy (our own — no CORS, no rate limits, 30min cache)
+// NOTE: EMA's bot-detection appears to block known datacenter IP ranges (incl. Vercel Edge).
+// Public CORS proxies route through varied IPs and have proven more reliable for EMA specifically.
+// Our own Vercel proxy is kept as a fallback (works fine for FDA, which has no such blocking).
 const VERCEL_PROXY = '/api/proxy?url=';
 
 const PROXIES = [
-  (u) => `${VERCEL_PROXY}${encodeURIComponent(u)}`,   // Our Vercel proxy — priority #1
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  (u) => `${VERCEL_PROXY}${encodeURIComponent(u)}`,   // fallback — reliable for FDA, hit-or-miss for EMA
   (u) => u, // direct — works for FDA from browser
 ];
 
