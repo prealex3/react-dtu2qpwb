@@ -1,4 +1,40 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import const APP_PASSWORD = process.env.REACT_APP_PASSWORD;
+
+function LoginScreen({ onLogin }) {
+  const [pw, setPw] = React.useState('');
+  const [err, setErr] = React.useState(false);
+
+  const handleSubmit = () => {
+    if (pw === APP_PASSWORD || pw === 'pharma2026') {
+      sessionStorage.setItem('pharma_auth', pw);
+      onLogin();
+    } else {
+      setErr(true);
+    }
+  };
+
+  return (
+    <div style={{background:"#0f172a",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"#1e293b",border:"1px solid #334155",borderRadius:16,padding:40,width:"100%",maxWidth:360}}>
+        <h1 style={{color:"#f8fafc",fontSize:18,fontWeight:700,marginBottom:6}}>Pharma Signal Monitor</h1>
+        <p style={{color:"#64748b",fontSize:13,marginBottom:24}}>Hedge Fund Intelligence - Private Access</p>
+        <input
+          type="password"
+          placeholder="Enter password"
+          value={pw}
+          onChange={e=>{setPw(e.target.value);setErr(false);}}
+          onKeyDown={e=>e.key==='Enter'&&handleSubmit()}
+          style={{width:"100%",padding:"10px 14px",background:"#0f172a",border:`1px solid ${err?"#ef4444":"#334155"}`,borderRadius:8,color:"#f8fafc",fontSize:14,marginBottom:12,outline:"none",boxSizing:"border-box"}}
+          autoFocus
+        />
+        {err && <p style={{color:"#f87171",fontSize:12,marginBottom:8}}>Incorrect password</p>}
+        <button onClick={handleSubmit} style={{width:"100%",padding:11,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:600,cursor:"pointer"}}>
+          Enter
+        </button>
+      </div>
+    </div>
+  );
+} React, { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
 const VERCEL_PROXY = '/api/proxy?url=';
@@ -997,6 +1033,11 @@ function PDUFAModal({p, onClose}) {
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [signals,    setSignals]    = React.useState([]);
+  const [authed, setAuthed] = React.useState(
+  sessionStorage.getItem('pharma_auth') === 'pharma2026'
+);
+
+if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
   const [loading,    setLoading]    = React.useState(false);
   const [srcStatus,  setSrcStatus]  = React.useState({});
   const [selected,   setSelected]   = React.useState(null);
