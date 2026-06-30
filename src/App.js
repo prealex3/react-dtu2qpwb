@@ -1,18 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
-// Multiple proxies tried in sequence — first one that works is used
-// NOTE: EMA's bot-detection appears to block known datacenter IP ranges (incl. Vercel Edge).
-// Public CORS proxies route through varied IPs and have proven more reliable for EMA specifically.
-// Our own Vercel proxy is kept as a fallback (works fine for FDA, which has no such blocking).
 const VERCEL_PROXY = '/api/proxy?url=';
 
 const PROXIES = [
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  (u) => `${VERCEL_PROXY}${encodeURIComponent(u)}`,   // fallback — reliable for FDA, hit-or-miss for EMA
-  (u) => u, // direct — works for FDA from browser
+  (u) => `${VERCEL_PROXY}${encodeURIComponent(u)}`,
+  (u) => u,
 ];
 
 const SOURCES = {
@@ -20,12 +16,8 @@ const SOURCES = {
   EMA_ORPHAN:"https://www.ema.europa.eu/en/documents/report/medicines-output-orphan_designations-json-report_en.json",
   EMA_MEDS:  "https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json",
 };
-// Note: EMA_MEDS JSON also contains opinion_status/opinion_adopted_date fields used for CHMP parsing — no separate URL needed
-
 
 // ─── PDUFA CALENDAR ───────────────────────────────────────────────────────────
-// Source: Company press releases + SEC filings (public domain)
-// Updated manually — add new entries as companies announce
 const PDUFA_CALENDAR = [
   // ── Q3 2026 ──
   { date:"2026-06-30", ticker:"IONS",  drug:"Olezarsen (TRYNGOLZA)", company:"Ionis Pharmaceuticals", indication:"Severe hypertriglyceridemia", type:"NDA", priority:true,  orphan:false, daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
@@ -40,7 +32,8 @@ const PDUFA_CALENDAR = [
   { date:"2026-12-05", ticker:"RARE",  drug:"UX111", company:"Ultragenyx", indication:"Sanfilippo syndrome type A (MPS IIIA)", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RARE" },
   // ── Q1 2027 ──
   { date:"2027-01-15", ticker:"RVMD",  drug:"Daraxonrasib", company:"Revolution Medicines", indication:"Metastatic PDAC — FDA full approval decision", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RVMD" },
-  { date:"2027-02-20", ticker:"IONS",  drug:"Tominersen (TRYNGOLZA)", company:"Ionis Pharmaceuticals", indication:"Huntington's disease", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
+  // FIX 3b: Tominersen nema brand name TRYNGOLZA — to je Olezarsen
+  { date:"2027-02-20", ticker:"IONS",  drug:"Tominersen", company:"Ionis Pharmaceuticals", indication:"Huntington's disease", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
   { date:"2027-03-10", ticker:"BMRN",  drug:"Vosoritide", company:"BioMarin", indication:"Achondroplasia adult label expansion", type:"sNDA", priority:false, orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/BMRN" },
 ];
 
@@ -51,7 +44,7 @@ function computePDUFA() {
     const d = new Date(p.date);
     const diff = Math.round((d - today) / 86400000);
     return { ...p, daysOut: diff };
-  }).filter(p => p.daysOut >= -7) // show up to 7 days past
+  }).filter(p => p.daysOut >= -7)
     .sort((a,b) => a.daysOut - b.daysOut);
 }
 
@@ -84,7 +77,6 @@ const HV_MODALITIES = [
 
 // ─── SPONSOR → TICKER MAPPING ───────────────────────────────────────────────
 const SPONSOR_TICKER = {
-  // Big Pharma
   "PFIZER": "PFE", "MERCK": "MRK", "MERCK SHARP": "MRK", "MERCK SHARP DOHME": "MRK",
   "GLAXOSMITHKLINE": "GSK", "GSK": "GSK", "BRISTOL": "BMY", "BRISTOL-MYERS": "BMY",
   "ABBVIE": "ABBV", "JOHNSON": "JNJ", "ELI LILLY": "LLY", "LILLY": "LLY",
@@ -92,8 +84,6 @@ const SPONSOR_TICKER = {
   "NOVO NORDISK": "NVO", "BAYER": "BAYRY", "TAKEDA": "TAK", "AMGEN": "AMGN",
   "BIOGEN": "BIIB", "GILEAD": "GILD", "REGENERON": "REGN", "VERTEX": "VRTX",
   "MODERNA": "MRNA", "BIONTECH": "BNTX", "SEAGEN": "SGEN", "ALEXION": "ALXN",
-
-  // Mid/Small Biotech — frequent FDA filers
   "IONIS": "IONS", "IONIS PHARMS": "IONS", "IONIS PHARMACEUTICALS": "IONS",
   "ZEALAND": "ZEAL", "ZEALAND PHARMA": "ZEAL",
   "PROVENTION": "PRVB", "PROVENTION BIO": "PRVB",
@@ -118,11 +108,8 @@ const SPONSOR_TICKER = {
 };
 
 function findTicker(sponsorName, companyField) {
-  // First check company field for explicit ticker in parentheses
   const companyTicker = (companyField || "").match(/\(([A-Z]{2,5})\)/)?.[1];
   if (companyTicker) return companyTicker;
-
-  // Search sponsor name against mapping
   const upper = (sponsorName || "").toUpperCase();
   for (const [key, ticker] of Object.entries(SPONSOR_TICKER)) {
     if (upper.includes(key)) return ticker === "private" ? null : ticker;
@@ -130,7 +117,7 @@ function findTicker(sponsorName, companyField) {
   return null;
 }
 
-// ─── DEMO DATA — real signals, always shown if live fails ────────────────────
+// ─── DEMO DATA ────────────────────────────────────────────────────────────────
 const DEMO = [
   { id:"d1", age:0, dateStr:"28/06/2026", source:"🇺🇸 FDA",
     tier:{tier:1,label:"🔴 TIER 1",reason:"Priority Review + Breakthrough + Orphan + HV Indication",color:"#dc2626"},
@@ -162,15 +149,16 @@ const DEMO = [
     url:"https://finance.yahoo.com/quote/OCS",
     tags:["PRIME","Breakthrough","Orphan","Neurology","First-in-class","OCS"] },
 
+  // FIX 3a: TRYNGOLZA = Olezarsen (cardiovascular), NE Tominersen (Huntington)
   { id:"d4", age:4, dateStr:"24/06/2026", source:"🇺🇸 FDA",
-    tier:{tier:1,label:"🔴 TIER 1",reason:"Priority Review Approval + Orphan + HV Indication (Huntington)",color:"#dc2626"},
-    name:"TRYNGOLZA (Tominersen)", company:"Ionis Pharmaceuticals (IONS)",
-    indication:"Treatment of Huntington's disease — antisense oligonucleotide targeting huntingtin mRNA, reduces toxic protein",
-    substance:"Antisense oligonucleotide (ASO) targeting HTT mRNA",
+    tier:{tier:1,label:"🔴 TIER 1",reason:"Priority Review Approval + Orphan + HV Indication (Hypertriglyceridemia)",color:"#dc2626"},
+    name:"TRYNGOLZA (Olezarsen)", company:"Ionis Pharmaceuticals (IONS)",
+    indication:"Treatment of severe hypertriglyceridemia — antisense oligonucleotide targeting APOC3 mRNA, reduces triglyceride-rich lipoproteins",
+    substance:"Antisense oligonucleotide (ASO) targeting APOC3 mRNA",
     status:"FDA NDA Approval — Priority Review + Orphan Drug",
     isOrphan:true, isAdvanced:false,
     url:"https://finance.yahoo.com/quote/IONS",
-    tags:["Priority Review","Orphan","Huntington","ASO","Neurology","IONS"] },
+    tags:["Priority Review","Orphan","Cardiovascular","ASO","APOC3","IONS"] },
 
   { id:"d5", age:5, dateStr:"23/06/2026", source:"🇺🇸 FDA",
     tier:{tier:2,label:"🟡 TIER 2",reason:"Accelerated Approval + Orphan + HV Indication",color:"#d97706"},
@@ -187,7 +175,7 @@ const DEMO = [
     name:"AAV-SLB101", company:"Solid Biosciences (SLDB)",
     indication:"Treatment of Duchenne muscular dystrophy — AAV-delivered micro-dystrophin gene therapy",
     substance:"Adeno-associated virus serotype SLB101 — gene therapy",
-    status:"EMA Orphan Designation — Positive",
+    status:"EMA Orphan Designation — Positive (clinical phase unconfirmed — verify before entry)",
     isOrphan:true, isAdvanced:true,
     url:"https://finance.yahoo.com/quote/SLDB",
     tags:["Orphan","Gene Therapy","AAV","Duchenne","Pediatric","SLDB"] },
@@ -227,24 +215,35 @@ const DEMO = [
     name:"Sefaxersen", company:"Chinook/Novartis (NVS)",
     indication:"Treatment of primary IgA nephropathy — APRIL inhibitor, reduces IgA deposits",
     substance:"Antisense oligonucleotide targeting APRIL (TNFSF13)",
-    status:"EMA Orphan Designation — Positive",
+    status:"EMA Orphan Designation — Positive (clinical phase unconfirmed — verify before entry)",
     isOrphan:true, isAdvanced:false,
     url:"https://finance.yahoo.com/quote/NVS",
     tags:["Orphan","Nephrology","ASO","IgA nephropathy","NVS"] },
 ];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
+// FIX 3e: Timezone-safe daysAgo — sve normalizovano na UTC ponoć
 function daysAgo(dateStr) {
   if (!dateStr) return null;
-  let d;
-  if (/^\d{8}$/.test(dateStr))
-    d = new Date(`${dateStr.slice(0,4)}-${dateStr.slice(4,6)}-${dateStr.slice(6,8)}`);
-  else if (/\d{2}\/\d{2}\/\d{4}/.test(dateStr)) {
+  let year, month, day;
+
+  if (/^\d{8}$/.test(dateStr)) {
+    year  = parseInt(dateStr.slice(0,4));
+    month = parseInt(dateStr.slice(4,6)) - 1;
+    day   = parseInt(dateStr.slice(6,8));
+  } else if (/\d{2}\/\d{2}\/\d{4}/.test(dateStr)) {
     const [dd,mm,yyyy] = dateStr.split("/");
-    d = new Date(`${yyyy}-${mm}-${dd}`);
-  } else d = new Date(dateStr);
-  if (!d || isNaN(d)) return null;
-  return Math.floor((Date.now() - d.getTime()) / 86400000);
+    year = parseInt(yyyy); month = parseInt(mm)-1; day = parseInt(dd);
+  } else {
+    const d = new Date(dateStr);
+    if (!d || isNaN(d)) return null;
+    year = d.getUTCFullYear(); month = d.getUTCMonth(); day = d.getUTCDate();
+  }
+
+  const signal   = Date.UTC(year, month, day);
+  const today    = new Date();
+  const todayUTC = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return Math.floor((todayUTC - signal) / 86400000);
 }
 
 async function tryFetch(url, timeoutMs = 9000) {
@@ -336,7 +335,6 @@ function parseFDA(data, maxAge) {
   for (const app of (data?.results || [])) {
     const subs = app.submissions || [];
 
-    // Find most recent approval action
     const aps = subs
       .filter(s => ["AP","TA","NA"].includes(s.submission_status))
       .sort((a,b) => (b.submission_status_date||"").localeCompare(a.submission_status_date||""));
@@ -349,10 +347,9 @@ function parseFDA(data, maxAge) {
     const product = (app.products || [])[0] || {};
     const openFDA = app.openfda || {};
     const appNum  = app.application_number || "";
-    const appType = appNum.slice(0,3); // NDA, BLA, ANDA
-    if (appType === "AND") continue; // Skip ANDA (generic drugs) — not investment signals
+    const appType = appNum.slice(0,3);
+    if (appType === "AND") continue;
 
-    // Build full text of all submission types for flag detection
     const allSubText = subs
       .map(s => [s.submission_type,s.submission_class_code_description,
                  ...(s.application_docs||[]).map(d=>d.type||"")].join(" "))
@@ -364,20 +361,18 @@ function parseFDA(data, maxAge) {
     const indication = rawIndication.replace(/\bAND\b/g,"").replace(/\s{2,}/g," ").trim();
     const rxClasses  = (openFDA.pharm_class_epc||openFDA.pharm_class_cs||[]).join(" ");
 
-    // Flag detection — comprehensive
     const isPriority    = latest.review_priority === "PRIORITY" ||
                           allSubText.includes("PRIORITY REVIEW") ||
                           allSubText.includes("PRIO");
     const isBreakthrough= allSubText.includes("BREAKTHROUGH") || allSubText.includes("BTD");
-    const isAccelerated = allSubText.includes("ACCELERATED") || allSubText.includes("REMS");
+    // FIX 3c: REMS nije Accelerated Approval — uklonjen iz detekcije
+    const isAccelerated = allSubText.includes("ACCELERATED APPROVAL") || allSubText.includes("ACCELERATED ASSESSMENT");
     const isFastTrack   = allSubText.includes("FAST TRACK") || allSubText.includes("FT ");
     const isOrphan      = allSubText.includes("ORPHAN") || allSubText.includes("ODD");
     const isAdvTherapy  = appType === "BLA" ||
                           /gene|cell therapy|viral vector|aav|mrna|sirna/i.test(substance+rxClasses);
 
     const extraText = allSubText + " " + rxClasses + " " + substance + " " + brandName;
-
-    // Use extraText as fallback indication for scoring when indication is empty
     const scoringIndication = indication || extraText;
     const rec = {
       indication: scoringIndication, substance, extraText,
@@ -468,7 +463,8 @@ function parseEMAOrphan(data, maxAge) {
       indication: indication.slice(0,250),
       substance: substance.slice(0,120),
       age, dateStr,
-      status: "EMA Orphan Designation — Positive",
+      // FIX 3f: napomena da klinička faza nije potvrđena
+      status: "EMA Orphan Designation — Positive (clinical phase unconfirmed — verify before entry)",
       source: "🇪🇺 EMA Orphan",
       isOrphan:true, isAdvanced:isAdv,
       url: r.orphan_designation_url || "https://www.ema.europa.eu",
@@ -484,7 +480,9 @@ function parseEMAMeds(data, maxAge) {
   const out = [];
   for (const r of records) {
     if (r.medicine_status !== "Authorised") continue;
-    const dateStr = r.european_commission_decision_date || r.marketing_authorisation_date || r.opinion_adopted_date || r.last_updated_date || "";
+    // FIX 3d: uklonjen last_updated_date — može dati lažno stare signale
+    const dateStr = r.european_commission_decision_date || r.marketing_authorisation_date || r.opinion_adopted_date || "";
+    if (!dateStr) continue;
     const age = daysAgo(dateStr);
     if (age === null || age > maxAge) continue;
 
@@ -531,14 +529,11 @@ function parseEMAMeds(data, maxAge) {
 }
 
 // ─── EMA CHMP OPINIONS PARSER (P3) ────────────────────────────────────────────
-// Uses same EMA Medicines JSON but filters on opinion_status="Positive"
-// CHMP positive opinion → EC decision follows ~67 days later (pre-approval alpha window)
 function parseCHMPOpinions(data, maxAge) {
   const records = Array.isArray(data) ? data : (data?.data || []);
   const out = [];
   for (const r of records) {
     if (r.opinion_status !== "Positive") continue;
-    // Skip if already fully authorised (we want PENDING EC decisions only)
     if (r.medicine_status === "Authorised") continue;
 
     const dateStr = r.opinion_adopted_date || "";
@@ -546,20 +541,18 @@ function parseCHMPOpinions(data, maxAge) {
     if (age === null || age > maxAge) continue;
 
     const isPrime      = r.prime_priority_medicine === "Yes" || r.prime_priority_medicine === "yes";
-    const isOrphan      = r.orphan_medicine === "Yes" || r.orphan_medicine === "yes";
-    const isAdvTherapy  = r.advanced_therapy === "Yes" || r.advanced_therapy === "yes";
-    const substance     = r.active_substance || "";
-    const indication    = r.therapeutic_indication || r.condition_indication || r.therapeutic_area_mesh || "";
+    const isOrphan     = r.orphan_medicine === "Yes" || r.orphan_medicine === "yes";
+    const isAdvTherapy = r.advanced_therapy === "Yes" || r.advanced_therapy === "yes";
+    const substance    = r.active_substance || "";
+    const indication   = r.therapeutic_indication || r.condition_indication || r.therapeutic_area_mesh || "";
 
-    // CHMP Positive Opinion is ALWAYS at least Tier 1 — it's a near-certain approval 67 days out
     const tier = { tier:1, label:"🔴 TIER 1", reason:"CHMP Positive Opinion — EC decision in ~67 days", color:"#dc2626" };
 
     const tags = ["CHMP Opinion"];
     if (isPrime)      tags.push("PRIME");
-    if (isOrphan)      tags.push("Orphan");
-    if (isAdvTherapy)  tags.push("Advanced Therapy");
+    if (isOrphan)     tags.push("Orphan");
+    if (isAdvTherapy) tags.push("Advanced Therapy");
 
-    // Calculate estimated EC decision date
     const opDate = new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1"));
     const ecDate = new Date(opDate); ecDate.setDate(ecDate.getDate() + 67);
     const ecDateStr = ecDate.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
@@ -583,8 +576,6 @@ function parseCHMPOpinions(data, maxAge) {
 }
 
 // ─── FDA NEW APPLICATIONS PARSER (P_NEW) ──────────────────────────────────────
-// Catches NDA/BLA at FILING stage (submission_type="ORIG") — gives 10-12mo runway
-// before PDUFA decision, vs catching only final approvals
 function parseFDANewApplications(data, maxAge) {
   const out = [];
   for (const app of (data?.results || [])) {
@@ -599,7 +590,6 @@ function parseFDANewApplications(data, maxAge) {
     const age = daysAgo(origSub.submission_status_date || "");
     if (age === null || age > maxAge) continue;
 
-    // Only flag Priority Review filings — most investable signal
     const isPriority = (origSub.review_priority || "").toUpperCase() === "PRIORITY";
     if (!isPriority) continue;
 
@@ -787,7 +777,6 @@ function Modal({s, onClose}) {
         boxShadow:"0 32px 80px rgba(0,0,0,.35)",
         border:`2px solid ${tc.accent}`
       }}>
-        {/* HEADER */}
         <div style={{padding:"16px 18px 12px",borderBottom:"1px solid #f1f5f9"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div>
@@ -809,7 +798,6 @@ function Modal({s, onClose}) {
         </div>
 
         <div style={{padding:"16px 18px"}}>
-          {/* PROTOCOL BOX */}
           <div style={{background:proto.bg,border:`1.5px solid ${proto.color}30`,
             borderRadius:10,padding:"11px 14px",marginBottom:16}}>
             <div style={{fontWeight:800,color:proto.color,fontSize:13}}>{proto.title}</div>
@@ -818,7 +806,6 @@ function Modal({s, onClose}) {
             </div>
           </div>
 
-          {/* DATA FIELDS */}
           {[
             ["Indication / Disease", s.indication],
             ["Active Substance / Modality", s.substance],
@@ -831,10 +818,8 @@ function Modal({s, onClose}) {
             </div>
           ) : null)}
 
-          {/* TAGS */}
           <div style={{marginBottom:16}}>{(s.tags||[]).map(t=><Tag key={t} text={t}/>)}</div>
 
-          {/* PROTOCOL STEPS */}
           <div style={{fontSize:13,fontWeight:800,color:"#0f172a",marginBottom:10}}>
             ⚡ Hedge Fund Protocol
           </div>
@@ -849,7 +834,6 @@ function Modal({s, onClose}) {
             </div>
           ))}
 
-          {/* ACTION BUTTONS */}
           <div style={{display:"flex",gap:7,flexWrap:"wrap",marginTop:16}}>
             <a href={yahooURL} target="_blank" rel="noopener noreferrer"
               style={{flex:1,padding:"10px",background:"#7c3aed",color:"#fff",
@@ -875,8 +859,6 @@ function Modal({s, onClose}) {
     </div>
   );
 }
-
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 // ─── PDUFA CARD ───────────────────────────────────────────────────────────────
 function PDUFACard({p, onClick}) {
@@ -1013,6 +995,7 @@ function PDUFAModal({p, onClose}) {
   );
 }
 
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [signals,    setSignals]    = React.useState([]);
   const [loading,    setLoading]    = React.useState(false);
@@ -1036,7 +1019,6 @@ export default function App() {
     const status = {};
     const all    = [];
 
-    // Build FDA date range
     const today = new Date();
     const from  = new Date(today);
     from.setDate(from.getDate() - maxAge);
@@ -1075,7 +1057,7 @@ export default function App() {
       status["🇪🇺 EMA Meds"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
-    // ── EMA CHMP Positive Opinions (P3) — reuses EMA Meds data, different filter ──
+    // ── EMA CHMP Positive Opinions (P3) ──
     try {
       if (emaMedsRaw) {
         const parsed = parseCHMPOpinions(emaMedsRaw, maxAge);
@@ -1088,13 +1070,13 @@ export default function App() {
       status["🇪🇺 CHMP Opinions"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
-    // ── FDA New Filings (P_NEW) — reuses FDA approval data fetch with different filter ──
+    // ── FDA New Filings (P_NEW) ──
     try {
-      const today = new Date();
-      const from2 = new Date(today);
+      const today2 = new Date();
+      const from2 = new Date(today2);
       from2.setDate(from2.getDate() - maxAge);
       const fmt2 = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
-      const newFilingUrl = `${SOURCES.FDA}?search=submissions.submission_status_date:[${fmt2(from2)}+TO+${fmt2(today)}]+AND+submissions.submission_type:ORIG&limit=200&sort=submissions.submission_status_date:desc`;
+      const newFilingUrl = `${SOURCES.FDA}?search=submissions.submission_status_date:[${fmt2(from2)}+TO+${fmt2(today2)}]+AND+submissions.submission_type:ORIG&limit=200&sort=submissions.submission_status_date:desc`;
       const newFilingData = await tryFetch(newFilingUrl);
       const parsed = parseFDANewApplications(newFilingData, maxAge);
       all.push(...parsed);
@@ -1111,7 +1093,6 @@ export default function App() {
       setSignals(sorted);
       status["Demo"] = "⚡ Showing curated real signals";
     } else {
-      // Deduplicate and sort: Tier 1 first, then by recency
       const deduped = Object.values(
         all.reduce((acc,s) => { acc[s.id] = s; return acc; }, {})
       );
@@ -1156,8 +1137,6 @@ export default function App() {
       {/* ── HEADER ── */}
       <div style={{background:"linear-gradient(135deg,#0f172a 0%,#1e293b 100%)",color:"#fff"}}>
         <div style={{maxWidth:700,margin:"0 auto",padding:"16px 14px 0"}}>
-
-          {/* TOP ROW */}
           <div style={{display:"flex",justifyContent:"space-between",
             alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
             <div>
@@ -1183,7 +1162,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* SOURCE STATUS */}
           {Object.keys(srcStatus).length > 0 && (
             <div style={{display:"flex",gap:6,marginTop:9,flexWrap:"wrap"}}>
               {Object.entries(srcStatus).map(([k,v]) => (
@@ -1196,7 +1174,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TIER FILTER TABS */}
           <div style={{display:"flex",gap:5,marginTop:13,flexWrap:"wrap"}}>
             {[
               {t:0, label:"All",        c:"#64748b"},
@@ -1221,8 +1198,6 @@ export default function App() {
 
       {/* ── BODY ── */}
       <div style={{maxWidth:700,margin:"0 auto",padding:"12px 14px 40px"}}>
-
-        {/* CONTROLS */}
         <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:10}}>
           <input
             type="text"
@@ -1253,7 +1228,6 @@ export default function App() {
           </select>
         </div>
 
-        {/* LEGEND BAR */}
         <div style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:9,
           padding:"9px 14px",marginBottom:10,display:"flex",gap:14,
           flexWrap:"wrap",alignItems:"center"}}>
@@ -1265,7 +1239,6 @@ export default function App() {
           <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>Auto-refresh 30min</span>
         </div>
 
-        {/* DEMO BANNER */}
         {usingDemo && (
           <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:8,
             padding:"8px 13px",marginBottom:10,fontSize:11,color:"#92400e"}}>
@@ -1275,7 +1248,6 @@ export default function App() {
           </div>
         )}
 
-        {/* LOADING */}
         {loading && (
           <div style={{textAlign:"center",padding:48,color:"#64748b"}}>
             <div style={{fontSize:32,marginBottom:10}}>⟳</div>
@@ -1286,7 +1258,6 @@ export default function App() {
           </div>
         )}
 
-        {/* EMPTY */}
         {!loading && filtered.length === 0 && (
           <div style={{textAlign:"center",padding:48,color:"#64748b"}}>
             <div style={{fontSize:28,marginBottom:8}}>🔍</div>
@@ -1295,7 +1266,6 @@ export default function App() {
           </div>
         )}
 
-        {/* PDUFA CALENDAR VIEW */}
         {filterTier === 99 && (
           <div>
             <div style={{background:"#f5f3ff",border:"1.5px solid #c4b5fd",borderRadius:9,
@@ -1308,21 +1278,18 @@ export default function App() {
           </div>
         )}
 
-        {/* SIGNAL CARDS */}
         {filterTier !== 99 && !loading && filtered.map(s => (
           <Card key={s.id} s={s} onClick={setSelected}/>
         ))}
 
-        {/* FOOTER */}
         <div style={{textAlign:"center",fontSize:10,color:"#94a3b8",marginTop:20,lineHeight:1.8}}>
           Sources: openFDA (api.fda.gov) · European Medicines Agency (ema.europa.eu)<br/>
           Data updated 2× per day · For research only · Not financial advice
         </div>
       </div>
 
-      {/* MODAL */}
       {selected && <Modal s={selected} onClose={() => setSelected(null)}/>}
+      {selectedPdufa && <PDUFAModal p={selectedPdufa} onClose={() => setSelectedPdufa(null)}/>}
     </div>
   );
 }
-

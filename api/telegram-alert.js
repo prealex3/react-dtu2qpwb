@@ -20,6 +20,21 @@ const PDUFA_CALENDAR = [
   { date:"2027-02-20", ticker:"IONS",  drug:"Tominersen", indication:"Huntington's disease", type:"NDA" },
 ];
 
+// Map ticker → FDA sponsor name (OpenFDA nema tickere, samo company nazive)
+const TICKER_TO_SPONSOR = {
+  "IONS":  "Ionis Pharmaceuticals",
+  "AMGN":  "Amgen",
+  "RVMD":  "Revolution Medicines",
+  "AAPG":  "Ascentage Pharma",
+  "SRPT":  "Sarepta Therapeutics",
+  "BLUE":  "Bluebird Bio",
+  "NTLA":  "Intellia Therapeutics",
+  "RARE":  "Ultragenyx",
+  "BIIB":  "Biogen",
+  "ALNY":  "Alnylam",
+  "BMRN":  "BioMarin",
+};
+
 async function sendTelegram(token, chatId, message) {
   const url = `https://api.telegram.org/bot${token}/sendMessage`;
   const r = await fetch(url, {
@@ -29,7 +44,7 @@ async function sendTelegram(token, chatId, message) {
       chat_id: chatId,
       text: message,
       parse_mode: 'HTML',
-      disable_web_page_preview: true, // FIX: avoid broken link previews
+      disable_web_page_preview: true,
     }),
   });
   return r.ok;
@@ -41,21 +56,22 @@ function daysUntil(dateStr) {
   return Math.round((d - today) / 86400000);
 }
 
-// FIX P_FIX2: check if FDA already acted on this drug BEFORE the PDUFA date
-// (common — FDA often approves/rejects ahead of deadline)
 async function checkIfAlreadyResolved(ticker, drugKeyword) {
+  const sponsorName = TICKER_TO_SPONSOR[ticker];
+  if (!sponsorName) return null;
+
   try {
     const today = new Date();
-    const ninetyDaysAgo = new Date(today); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const ninetyDaysAgo = new Date(today);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     const fmt = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
 
-    const url = `https://api.fda.gov/drug/drugsfda.json?search=sponsor_name:"${encodeURIComponent(ticker)}"+AND+submissions.submission_status_date:[${fmt(ninetyDaysAgo)}+TO+${fmt(today)}]&limit=20`;
+    const url = `https://api.fda.gov/drug/drugsfda.json?search=sponsor_name:"${encodeURIComponent(sponsorName)}"+AND+submissions.submission_status_date:[${fmt(ninetyDaysAgo)}+TO+${fmt(today)}]&limit=20`;
     const r = await fetch(url);
     if (!r.ok) return null;
     const data = await r.json();
-    const results = data?.results || [];
 
-    for (const app of results) {
+    for (const app of (data?.results || [])) {
       const subs = app.submissions || [];
       const approved = subs.find(s => s.submission_status === "AP" || s.submission_status === "TA");
       if (approved) {
@@ -79,18 +95,16 @@ export default async function handler(req) {
   // ── 1. PDUFA CALENDAR — with resolved-check ──
   for (const p of PDUFA_CALENDAR) {
     const days = daysUntil(p.date);
-    if (days < -3 || days > 35) continue; // skip far future/past — keep alerts relevant
+    if (days < -3 || days > 35) continue;
 
     const dateStr = new Date(p.date).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
 
-    // FIX P_FIX2: if PDUFA is within 7 days, check whether FDA already resolved it
     if (days <= 7 && days >= -3) {
       const resolved = await checkIfAlreadyResolved(p.ticker, p.drug);
       if (resolved?.resolved) {
-        // Only alert once about resolution, not repeat "PDUFA TODAY" spam
         const resDate = new Date(resolved.date.replace(/(\d{4})(\d{2})(\d{2})/,"$1-$2-$3"));
         const daysAgoResolved = Math.round((new Date() - resDate) / 86400000);
-        if (daysAgoResolved <= 2) { // only alert if resolved in last 2 days
+        if (daysAgoResolved <= 2) {
           alerts.push(
             `✅ <b>FDA DECISION CONFIRMED</b>\n` +
             `💊 <b>${p.drug}</b> (${p.ticker})\n` +
@@ -100,7 +114,7 @@ export default async function handler(req) {
             `📊 <a href="https://finance.yahoo.com/quote/${p.ticker}">Yahoo Finance: ${p.ticker}</a>`
           );
         }
-        continue; // skip the normal countdown alerts for this one — already resolved
+        continue;
       }
     }
 
@@ -123,7 +137,6 @@ export default async function handler(req) {
         `📊 <a href="https://finance.yahoo.com/quote/${p.ticker}">Yahoo Finance: ${p.ticker}</a>`
       );
     } else if (days === 0) {
-      // FIX P_FIX: removed dead FDA.gov link, replaced with working press announcements page
       alerts.push(
         `🚨🚨 <b>PDUFA TODAY — WATCH FOR NEWS</b>\n💊 <b>${p.drug}</b> (${p.ticker})\n📋 ${p.indication}\n` +
         `⚡ Decision expected today or may already be resolved — check news.\n` +
@@ -143,17 +156,16 @@ export default async function handler(req) {
     const r = await fetch(fdaURL);
     if (r.ok) {
       const data = await r.json();
-      const results = data?.results || [];
-      for (const app of results) {
+      for (const app of (data?.results || [])) {
         const appNum = app.application_number || "";
         const appType = appNum.slice(0,3);
         if (appType === "AND") continue;
 
         const subs = app.submissions || [];
         const allSubText = subs.map(s => (s.submission_type||"")+" "+(s.application_docs||[]).map(d=>d.type||"").join(" ")).join(" ").toUpperCase();
-        const isPriority    = allSubText.includes("PRIORITY") || (subs[0]?.review_priority||"").toUpperCase()==="PRIORITY";
-        const isBreakthrough= allSubText.includes("BREAKTHROUGH");
-        const isOrphan      = allSubText.includes("ORPHAN");
+        const isPriority     = allSubText.includes("PRIORITY") || (subs[0]?.review_priority||"").toUpperCase()==="PRIORITY";
+        const isBreakthrough = allSubText.includes("BREAKTHROUGH");
+        const isOrphan       = allSubText.includes("ORPHAN");
 
         if (isPriority || isBreakthrough || isOrphan) {
           const product = (app.products||[])[0]||{};
@@ -177,20 +189,17 @@ export default async function handler(req) {
     }
   } catch(e) { /* silent */ }
 
-  // ── 3. NEW: FDA APPLICATIONS NEWLY RECEIVED (early pipeline signal) ──
-  // Catches NDA/BLA filings at submission stage — 10-12 months runway before decision
+  // ── 3. FDA APPLICATIONS NEWLY RECEIVED (early pipeline signal) ──
   try {
     const today = new Date();
     const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const fmt = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
 
-    // submission_status "AP","TA" = approved; we want submission_type that signals new filing
     const fdaURL = `https://api.fda.gov/drug/drugsfda.json?search=submissions.submission_status_date:[${fmt(sevenDaysAgo)}+TO+${fmt(today)}]+AND+submissions.submission_type:"ORIG"&limit=20`;
     const r = await fetch(fdaURL);
     if (r.ok) {
       const data = await r.json();
-      const results = data?.results || [];
-      for (const app of results) {
+      for (const app of (data?.results || [])) {
         const appNum = app.application_number || "";
         const appType = appNum.slice(0,3);
         if (appType === "AND") continue;
@@ -198,7 +207,6 @@ export default async function handler(req) {
         const subs = app.submissions || [];
         const latest = subs.find(s => s.submission_type === "ORIG");
         if (!latest) continue;
-        // Only flag if review_priority is Priority (most investable)
         if ((latest.review_priority||"").toUpperCase() !== "PRIORITY") continue;
 
         const product = (app.products||[])[0]||{};
@@ -213,7 +221,7 @@ export default async function handler(req) {
     }
   } catch(e) { /* silent */ }
 
-  // ── 4. NEW: EMA CHMP POSITIVE OPINIONS (67 days before EC decision) ──
+  // ── 4. EMA CHMP POSITIVE OPINIONS ──
   try {
     const emaURL = `https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json`;
     const r = await fetch(`https://pharma-signal-monitor.vercel.app/api/proxy?url=${encodeURIComponent(emaURL)}`);
@@ -227,12 +235,10 @@ export default async function handler(req) {
         const opDate = rec.opinion_adopted_date;
         if (!opDate) continue;
 
-        // Parse DD/MM/YYYY
         const [dd,mm,yyyy] = opDate.split("/");
         const opinionDate = new Date(`${yyyy}-${mm}-${dd}`);
         const daysSinceOpinion = Math.round((today - opinionDate) / 86400000);
 
-        // Alert only on the day it's freshly found (within last 3 days) — avoid spam
         if (daysSinceOpinion >= 0 && daysSinceOpinion <= 3) {
           const ecDecisionEst = new Date(opinionDate); ecDecisionEst.setDate(ecDecisionEst.getDate() + 67);
           const isPrime  = rec.prime_priority_medicine === "Yes" || rec.prime_priority_medicine === "yes";

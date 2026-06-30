@@ -1,7 +1,5 @@
 // Vercel Edge Function — /api/analyze.js
 // P5: Claude API integration — generates Alpha Score + investment brief per signal
-// Called on-demand when user opens a signal's detail modal (not pre-computed for all
-// signals, to keep costs low and responses fresh)
 
 export const config = {
     runtime: 'edge',
@@ -53,7 +51,11 @@ export const config = {
     try {
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
           max_tokens: 300,
@@ -80,7 +82,7 @@ export const config = {
         headers: {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, s-maxage=86400', // cache 24h — signal data doesn't change once approved
+          'Cache-Control': 'public, s-maxage=86400',
         },
       });
   
@@ -91,4 +93,3 @@ export const config = {
       });
     }
   }
-  
