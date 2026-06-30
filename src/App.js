@@ -18,6 +18,7 @@ const SOURCES = {
   EMA_ORPHAN:"https://www.ema.europa.eu/en/documents/report/medicines-output-orphan_designations-json-report_en.json",
   EMA_MEDS:  "https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json",
 };
+// Note: EMA_MEDS JSON also contains opinion_status/opinion_adopted_date fields used for CHMP parsing — no separate URL needed
 
 
 // ─── PDUFA CALENDAR ───────────────────────────────────────────────────────────
@@ -527,6 +528,108 @@ function parseEMAMeds(data, maxAge) {
   return out;
 }
 
+// ─── EMA CHMP OPINIONS PARSER (P3) ────────────────────────────────────────────
+// Uses same EMA Medicines JSON but filters on opinion_status="Positive"
+// CHMP positive opinion → EC decision follows ~67 days later (pre-approval alpha window)
+function parseCHMPOpinions(data, maxAge) {
+  const records = Array.isArray(data) ? data : (data?.data || []);
+  const out = [];
+  for (const r of records) {
+    if (r.opinion_status !== "Positive") continue;
+    // Skip if already fully authorised (we want PENDING EC decisions only)
+    if (r.medicine_status === "Authorised") continue;
+
+    const dateStr = r.opinion_adopted_date || "";
+    const age = daysAgo(dateStr);
+    if (age === null || age > maxAge) continue;
+
+    const isPrime      = r.prime_priority_medicine === "Yes" || r.prime_priority_medicine === "yes";
+    const isOrphan      = r.orphan_medicine === "Yes" || r.orphan_medicine === "yes";
+    const isAdvTherapy  = r.advanced_therapy === "Yes" || r.advanced_therapy === "yes";
+    const substance     = r.active_substance || "";
+    const indication    = r.therapeutic_indication || r.condition_indication || r.therapeutic_area_mesh || "";
+
+    // CHMP Positive Opinion is ALWAYS at least Tier 1 — it's a near-certain approval 67 days out
+    const tier = { tier:1, label:"🔴 TIER 1", reason:"CHMP Positive Opinion — EC decision in ~67 days", color:"#dc2626" };
+
+    const tags = ["CHMP Opinion"];
+    if (isPrime)      tags.push("PRIME");
+    if (isOrphan)      tags.push("Orphan");
+    if (isAdvTherapy)  tags.push("Advanced Therapy");
+
+    // Calculate estimated EC decision date
+    const opDate = new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, "$3-$2-$1"));
+    const ecDate = new Date(opDate); ecDate.setDate(ecDate.getDate() + 67);
+    const ecDateStr = ecDate.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+
+    out.push({
+      id: `chmp-${r.ema_product_number || r.name_of_medicine}`,
+      tier,
+      name: r.name_of_medicine || "Unknown",
+      company: r.marketing_authorisation_developer_applicant_holder || "",
+      indication: (indication || `CHMP positive opinion — EC decision expected ${ecDateStr}`).slice(0,250),
+      substance: substance.slice(0,120),
+      age, dateStr,
+      status: `EMA CHMP Positive Opinion — EC decision expected ${ecDateStr}`,
+      source: "🇪🇺 EMA CHMP",
+      isOrphan, isAdvanced: isAdvTherapy,
+      url: r.url || "https://www.ema.europa.eu/en/medicines",
+      tags: [...new Set(tags)].slice(0,7)
+    });
+  }
+  return out;
+}
+
+// ─── FDA NEW APPLICATIONS PARSER (P_NEW) ──────────────────────────────────────
+// Catches NDA/BLA at FILING stage (submission_type="ORIG") — gives 10-12mo runway
+// before PDUFA decision, vs catching only final approvals
+function parseFDANewApplications(data, maxAge) {
+  const out = [];
+  for (const app of (data?.results || [])) {
+    const appNum = app.application_number || "";
+    const appType = appNum.slice(0,3);
+    if (appType === "AND") continue;
+
+    const subs = app.submissions || [];
+    const origSub = subs.find(s => s.submission_type === "ORIG");
+    if (!origSub) continue;
+
+    const age = daysAgo(origSub.submission_status_date || "");
+    if (age === null || age > maxAge) continue;
+
+    // Only flag Priority Review filings — most investable signal
+    const isPriority = (origSub.review_priority || "").toUpperCase() === "PRIORITY";
+    if (!isPriority) continue;
+
+    const product = (app.products || [])[0] || {};
+    const openFDA = app.openfda || {};
+    const substance = (openFDA.substance_name||[]).join(", ") || product.generic_name || "";
+    const brandName = (product.brand_name || (openFDA.brand_name||[])[0] || substance.slice(0,30) || "Unknown").replace(/\bAND\b/g,"").trim();
+    const indication = (openFDA.indications_and_usage||[]).join(" ").replace(/\bAND\b/g,"").trim();
+
+    const tier = { tier:2, label:"🟡 TIER 2", reason:"New Priority Review Filing — PDUFA date pending (~60-90 days to set, then 6-10mo to decision)", color:"#d97706" };
+
+    const dateFmt = (origSub.submission_status_date||"").replace(/(\d{4})(\d{2})(\d{2})/,"$3/$2/$1");
+
+    out.push({
+      id: `fda-new-${appNum}`,
+      tier,
+      name: brandName,
+      company: app.sponsor_name || "",
+      indication: indication.slice(0,250) || `${appType} filing received — Priority Review`,
+      substance: substance.slice(0,120),
+      age, dateStr: dateFmt,
+      status: `FDA ${appType} — NEW FILING — Priority Review (early pipeline signal)`,
+      source: "🇺🇸 FDA New Filing",
+      isOrphan:false, isAdvanced:false,
+      fdaTicker: findTicker(app.sponsor_name, ""),
+      url: `https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=${appNum.replace(/\D/g,"")}`,
+      tags: ["New Filing", "Priority Review", appType]
+    });
+  }
+  return out;
+}
+
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
 const TC = {
   1:{bg:"#fef2f2",border:"#fca5a5",text:"#991b1b",accent:"#dc2626"},
@@ -960,13 +1063,42 @@ export default function App() {
     }
 
     // ── EMA Medicines ──
+    let emaMedsRaw = null;
     try {
-      const data   = await tryFetch(SOURCES.EMA_MEDS);
-      const parsed = parseEMAMeds(data, maxAge);
+      emaMedsRaw   = await tryFetch(SOURCES.EMA_MEDS);
+      const parsed = parseEMAMeds(emaMedsRaw, maxAge);
       all.push(...parsed);
       status["🇪🇺 EMA Meds"] = `✅ ${parsed.length} signals`;
     } catch(e) {
       status["🇪🇺 EMA Meds"] = `⚠️ ${String(e.message).slice(0,30)}`;
+    }
+
+    // ── EMA CHMP Positive Opinions (P3) — reuses EMA Meds data, different filter ──
+    try {
+      if (emaMedsRaw) {
+        const parsed = parseCHMPOpinions(emaMedsRaw, maxAge);
+        all.push(...parsed);
+        status["🇪🇺 CHMP Opinions"] = `✅ ${parsed.length} signals`;
+      } else {
+        status["🇪🇺 CHMP Opinions"] = `⚠️ no data`;
+      }
+    } catch(e) {
+      status["🇪🇺 CHMP Opinions"] = `⚠️ ${String(e.message).slice(0,30)}`;
+    }
+
+    // ── FDA New Filings (P_NEW) — reuses FDA approval data fetch with different filter ──
+    try {
+      const today = new Date();
+      const from2 = new Date(today);
+      from2.setDate(from2.getDate() - maxAge);
+      const fmt2 = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+      const newFilingUrl = `${SOURCES.FDA}?search=submissions.submission_status_date:[${fmt2(from2)}+TO+${fmt2(today)}]+AND+submissions.submission_type:ORIG&limit=200&sort=submissions.submission_status_date:desc`;
+      const newFilingData = await tryFetch(newFilingUrl);
+      const parsed = parseFDANewApplications(newFilingData, maxAge);
+      all.push(...parsed);
+      status["🇺🇸 FDA New Filings"] = `✅ ${parsed.length} signals`;
+    } catch(e) {
+      status["🇺🇸 FDA New Filings"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
     if (id !== fetchID.current) return;
@@ -1003,6 +1135,8 @@ export default function App() {
     if (filterTier && s.tier.tier !== filterTier) return false;
     if (filterSrc === "fda" && !s.source.includes("FDA")) return false;
     if (filterSrc === "ema" && !s.source.includes("EMA")) return false;
+    if (filterSrc === "chmp" && !s.source.includes("CHMP")) return false;
+    if (filterSrc === "newfiling" && !s.source.includes("New Filing")) return false;
     if (search) {
       const q = search.toLowerCase();
       return s.name.toLowerCase().includes(q) ||
@@ -1103,6 +1237,8 @@ export default function App() {
             <option value="all">🌍 All Sources</option>
             <option value="fda">🇺🇸 FDA Only</option>
             <option value="ema">🇪🇺 EMA Only</option>
+            <option value="chmp">🇪🇺 CHMP Opinions</option>
+            <option value="newfiling">🇺🇸 New FDA Filings</option>
           </select>
           <select value={maxAge} onChange={e=>setMaxAge(Number(e.target.value))}
             style={{padding:"8px 9px",borderRadius:8,fontSize:11,
