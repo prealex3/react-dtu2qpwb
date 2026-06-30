@@ -369,8 +369,7 @@ function parseFDA(data, maxAge) {
     const isAccelerated = allSubText.includes("ACCELERATED APPROVAL") || allSubText.includes("ACCELERATED ASSESSMENT");
     const isFastTrack   = allSubText.includes("FAST TRACK") || allSubText.includes("FT ");
     const isOrphan      = allSubText.includes("ORPHAN") || allSubText.includes("ODD");
-    const isAdvTherapy  = appType === "BLA" ||
-                          /gene|cell therapy|viral vector|aav|mrna|sirna/i.test(substance+rxClasses);
+    const isAdvTherapy = /gene|cell therapy|viral vector|aav|mrna|sirna|lentiviral|adeno-associated/i.test(substance+rxClasses);
 
     const extraText = allSubText + " " + rxClasses + " " + substance + " " + brandName;
     const scoringIndication = indication || extraText;
