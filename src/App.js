@@ -1032,6 +1032,10 @@ function PDUFAModal({p, onClose}) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
+  const [authed, setAuthed] = React.useState(
+    sessionStorage.getItem('pharma_auth') === 'pharma2026'
+  );
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />; 
   const [signals,    setSignals]    = React.useState([]);
   const [authed, setAuthed] = React.useState(
   sessionStorage.getItem('pharma_auth') === 'pharma2026'
