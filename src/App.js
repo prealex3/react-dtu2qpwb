@@ -1,11 +1,14 @@
+import React, { useState, useEffect, useCallback, useRef } from "react";
+
+// ─── LOGIN / AUTH ─────────────────────────────────────────────────────────────
 const APP_PASSWORD = process.env.REACT_APP_PASSWORD;
 
 function LoginScreen({ onLogin }) {
-  const [pw, setPw] = React.useState('');
+  const [pw, setPw]   = React.useState('');
   const [err, setErr] = React.useState(false);
 
   const handleSubmit = () => {
-    if (pw === APP_PASSWORD || pw === 'pharma2026') {
+    if (APP_PASSWORD && pw === APP_PASSWORD) {
       sessionStorage.setItem('pharma_auth', pw);
       onLogin();
     } else {
@@ -14,7 +17,7 @@ function LoginScreen({ onLogin }) {
   };
 
   return (
-    <div style={{background:"#0f172a",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+    <div style={{background:"#0f172a",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter','Helvetica Neue',Arial,sans-serif"}}>
       <div style={{background:"#1e293b",border:"1px solid #334155",borderRadius:16,padding:40,width:"100%",maxWidth:360}}>
         <h1 style={{color:"#f8fafc",fontSize:18,fontWeight:700,marginBottom:6}}>Pharma Signal Monitor</h1>
         <p style={{color:"#64748b",fontSize:13,marginBottom:24}}>Hedge Fund Intelligence - Private Access</p>
@@ -34,7 +37,7 @@ function LoginScreen({ onLogin }) {
       </div>
     </div>
   );
-} React, { useState, useEffect, useCallback, useRef } from "react";
+}
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
 const VERCEL_PROXY = '/api/proxy?url=';
@@ -55,7 +58,6 @@ const SOURCES = {
 
 // ─── PDUFA CALENDAR ───────────────────────────────────────────────────────────
 const PDUFA_CALENDAR = [
-  // ── Q3 2026 ──
   { date:"2026-06-30", ticker:"IONS",  drug:"Olezarsen (TRYNGOLZA)", company:"Ionis Pharmaceuticals", indication:"Severe hypertriglyceridemia", type:"NDA", priority:true,  orphan:false, daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
   { date:"2026-07-29", ticker:"AMGN",  drug:"Tavneos (avacopan)", company:"Amgen/CSL", indication:"ANCA-associated vasculitis EU hearing", type:"EMA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/AMGN" },
   { date:"2026-08-12", ticker:"RVMD",  drug:"Daraxonrasib", company:"Revolution Medicines", indication:"Metastatic pancreatic cancer (2L PDAC)", type:"NDA rolling", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RVMD" },
@@ -66,9 +68,7 @@ const PDUFA_CALENDAR = [
   { date:"2026-10-22", ticker:"BLUE",  drug:"Skysona (elivaldogene autotemcel)", company:"Bluebird Bio", indication:"Cerebral adrenoleukodystrophy", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/BLUE" },
   { date:"2026-11-10", ticker:"NTLA",  drug:"NTLA-2001", company:"Intellia Therapeutics", indication:"Transthyretin amyloidosis (ATTR)", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/NTLA" },
   { date:"2026-12-05", ticker:"RARE",  drug:"UX111", company:"Ultragenyx", indication:"Sanfilippo syndrome type A (MPS IIIA)", type:"BLA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RARE" },
-  // ── Q1 2027 ──
   { date:"2027-01-15", ticker:"RVMD",  drug:"Daraxonrasib", company:"Revolution Medicines", indication:"Metastatic PDAC — FDA full approval decision", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/RVMD" },
-  // FIX 3b: Tominersen nema brand name TRYNGOLZA — to je Olezarsen
   { date:"2027-02-20", ticker:"IONS",  drug:"Tominersen", company:"Ionis Pharmaceuticals", indication:"Huntington's disease", type:"NDA", priority:true,  orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/IONS" },
   { date:"2027-03-10", ticker:"BMRN",  drug:"Vosoritide", company:"BioMarin", indication:"Achondroplasia adult label expansion", type:"sNDA", priority:false, orphan:true,  daysOut:null, url:"https://finance.yahoo.com/quote/BMRN" },
 ];
@@ -185,7 +185,6 @@ const DEMO = [
     url:"https://finance.yahoo.com/quote/OCS",
     tags:["PRIME","Breakthrough","Orphan","Neurology","First-in-class","OCS"] },
 
-  // FIX 3a: TRYNGOLZA = Olezarsen (cardiovascular), NE Tominersen (Huntington)
   { id:"d4", age:4, dateStr:"24/06/2026", source:"🇺🇸 FDA",
     tier:{tier:1,label:"🔴 TIER 1",reason:"Priority Review Approval + Orphan + HV Indication (Hypertriglyceridemia)",color:"#dc2626"},
     name:"TRYNGOLZA (Olezarsen)", company:"Ionis Pharmaceuticals (IONS)",
@@ -258,7 +257,6 @@ const DEMO = [
 ];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
-// FIX 3e: Timezone-safe daysAgo — sve normalizovano na UTC ponoć
 function daysAgo(dateStr) {
   if (!dateStr) return null;
   let year, month, day;
@@ -312,7 +310,6 @@ function scoreTier(rec) {
   const fastTrack = isPrime || isBreakthrough;
   const approved  = isApproved || isPositive;
 
-  // ── TIER 1 ──
   if (approved && fastTrack && hvI)
     return {tier:1,label:"🔴 TIER 1",reason:"Approval + Breakthrough/PRIME + HV Indication",color:"#dc2626"};
   if (approved && isPriority && isOrphan && hvI)
@@ -328,7 +325,6 @@ function scoreTier(rec) {
   if (approved && isPriority && hvI && hvM)
     return {tier:1,label:"🔴 TIER 1",reason:"Priority Review + HV Indication + HV Modality",color:"#dc2626"};
 
-  // ── TIER 2 ──
   if (isPrime && hvI)
     return {tier:2,label:"🟡 TIER 2",reason:"PRIME Designation + HV Indication",color:"#d97706"};
   if (isBreakthrough && hvI)
@@ -350,7 +346,6 @@ function scoreTier(rec) {
   if (approved && isPriority)
     return {tier:2,label:"🟡 TIER 2",reason:"Priority Review Approval",color:"#d97706"};
 
-  // ── TIER 3 ──
   if (isOrphan && hvI)
     return {tier:3,label:"🟢 TIER 3",reason:"Orphan Designation + HV Indication",color:"#059669"};
   if (approved && hvI)
@@ -401,11 +396,10 @@ function parseFDA(data, maxAge) {
                           allSubText.includes("PRIORITY REVIEW") ||
                           allSubText.includes("PRIO");
     const isBreakthrough= allSubText.includes("BREAKTHROUGH") || allSubText.includes("BTD");
-    // FIX 3c: REMS nije Accelerated Approval — uklonjen iz detekcije
     const isAccelerated = allSubText.includes("ACCELERATED APPROVAL") || allSubText.includes("ACCELERATED ASSESSMENT");
     const isFastTrack   = allSubText.includes("FAST TRACK") || allSubText.includes("FT ");
     const isOrphan      = allSubText.includes("ORPHAN") || allSubText.includes("ODD");
-    const isAdvTherapy = /gene|cell therapy|viral vector|aav|mrna|sirna|lentiviral|adeno-associated/i.test(substance+rxClasses);
+    const isAdvTherapy  = /gene|cell therapy|viral vector|aav|mrna|sirna|lentiviral|adeno-associated/i.test(substance+rxClasses);
 
     const extraText = allSubText + " " + rxClasses + " " + substance + " " + brandName;
     const scoringIndication = indication || extraText;
@@ -498,7 +492,6 @@ function parseEMAOrphan(data, maxAge) {
       indication: indication.slice(0,250),
       substance: substance.slice(0,120),
       age, dateStr,
-      // FIX 3f: napomena da klinička faza nije potvrđena
       status: "EMA Orphan Designation — Positive (clinical phase unconfirmed — verify before entry)",
       source: "🇪🇺 EMA Orphan",
       isOrphan:true, isAdvanced:isAdv,
@@ -515,7 +508,6 @@ function parseEMAMeds(data, maxAge) {
   const out = [];
   for (const r of records) {
     if (r.medicine_status !== "Authorised") continue;
-    // FIX 3d: uklonjen last_updated_date — može dati lažno stare signale
     const dateStr = r.european_commission_decision_date || r.marketing_authorisation_date || r.opinion_adopted_date || "";
     if (!dateStr) continue;
     const age = daysAgo(dateStr);
@@ -634,6 +626,11 @@ function parseFDANewApplications(data, maxAge) {
     const brandName = (product.brand_name || (openFDA.brand_name||[])[0] || substance.slice(0,30) || "Unknown").replace(/\bAND\b/g,"").trim();
     const indication = (openFDA.indications_and_usage||[]).join(" ").replace(/\bAND\b/g,"").trim();
 
+    // Skip efficacy supplements / label expansions for already-approved drugs (not early signals)
+    const isSupplement = /supplement|label expansion|snda|sbla/i.test(allTextForApp(app));
+    const priorApprovals = subs.filter(s => s.submission_status === "AP").length;
+    if (isSupplement || priorApprovals > 0) continue;
+
     const tier = { tier:2, label:"🟡 TIER 2", reason:"New Priority Review Filing — PDUFA date pending (~60-90 days to set, then 6-10mo to decision)", color:"#d97706" };
 
     const dateFmt = (origSub.submission_status_date||"").replace(/(\d{4})(\d{2})(\d{2})/,"$3/$2/$1");
@@ -655,6 +652,11 @@ function parseFDANewApplications(data, maxAge) {
     });
   }
   return out;
+}
+
+function allTextForApp(app) {
+  const subs = app.submissions || [];
+  return subs.map(s => [s.submission_type, s.submission_class_code_description].join(" ")).join(" ").toLowerCase();
 }
 
 // ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
@@ -1033,15 +1035,10 @@ function PDUFAModal({p, onClose}) {
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [authed, setAuthed] = React.useState(
-    sessionStorage.getItem('pharma_auth') === 'pharma2026'
+    typeof window !== "undefined" && sessionStorage.getItem('pharma_auth') === APP_PASSWORD && !!APP_PASSWORD
   );
-  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />; 
-  const [signals,    setSignals]    = React.useState([]);
-  const [authed, setAuthed] = React.useState(
-  sessionStorage.getItem('pharma_auth') === 'pharma2026'
-);
 
-if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
+  const [signals,    setSignals]    = React.useState([]);
   const [loading,    setLoading]    = React.useState(false);
   const [srcStatus,  setSrcStatus]  = React.useState({});
   const [selected,   setSelected]   = React.useState(null);
@@ -1069,7 +1066,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
     const fmt = d =>
       `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
 
-    // ── FDA ──
     try {
       const url = `${SOURCES.FDA}?search=submissions.submission_status_date:[${fmt(from)}+TO+${fmt(today)}]+AND+submissions.submission_status:AP&limit=500&sort=submissions.submission_status_date:desc`;
       const data  = await tryFetch(url);
@@ -1080,7 +1076,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
       status["🇺🇸 FDA"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
-    // ── EMA Orphan ──
     try {
       const data   = await tryFetch(SOURCES.EMA_ORPHAN);
       const parsed = parseEMAOrphan(data, maxAge);
@@ -1090,7 +1085,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
       status["🇪🇺 EMA Orphan"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
-    // ── EMA Medicines ──
     let emaMedsRaw = null;
     try {
       emaMedsRaw   = await tryFetch(SOURCES.EMA_MEDS);
@@ -1101,7 +1095,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
       status["🇪🇺 EMA Meds"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
-    // ── EMA CHMP Positive Opinions (P3) ──
     try {
       if (emaMedsRaw) {
         const parsed = parseCHMPOpinions(emaMedsRaw, maxAge);
@@ -1114,7 +1107,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
       status["🇪🇺 CHMP Opinions"] = `⚠️ ${String(e.message).slice(0,30)}`;
     }
 
-    // ── FDA New Filings (P_NEW) ──
     try {
       const today2 = new Date();
       const from2 = new Date(today2);
@@ -1149,11 +1141,14 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
     setLoading(false);
   }, [maxAge]);
 
-  React.useEffect(() => { fetchAll(); }, [fetchAll]);
+  React.useEffect(() => { if (authed) fetchAll(); }, [fetchAll, authed]);
   React.useEffect(() => {
+    if (!authed) return;
     const iv = setInterval(fetchAll, 30 * 60 * 1000);
     return () => clearInterval(iv);
-  }, [fetchAll]);
+  }, [fetchAll, authed]);
+
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
 
   const counts = {1:0,2:0,3:0};
   signals.forEach(s => { if (counts[s.tier.tier] !== undefined) counts[s.tier.tier]++; });
@@ -1178,7 +1173,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
     <div style={{minHeight:"100vh",background:"#f1f5f9",
       fontFamily:"'Inter','Helvetica Neue',Arial,sans-serif"}}>
 
-      {/* ── HEADER ── */}
       <div style={{background:"linear-gradient(135deg,#0f172a 0%,#1e293b 100%)",color:"#fff"}}>
         <div style={{maxWidth:700,margin:"0 auto",padding:"16px 14px 0"}}>
           <div style={{display:"flex",justifyContent:"space-between",
@@ -1240,7 +1234,6 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
         </div>
       </div>
 
-      {/* ── BODY ── */}
       <div style={{maxWidth:700,margin:"0 auto",padding:"12px 14px 40px"}}>
         <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:10}}>
           <input
@@ -1286,9 +1279,8 @@ if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />;
         {usingDemo && (
           <div style={{background:"#fffbeb",border:"1.5px solid #fcd34d",borderRadius:8,
             padding:"8px 13px",marginBottom:10,fontSize:11,color:"#92400e"}}>
-            <b>Demo Mode</b> — Sandbox environment blocks some live API calls.
-            Showing real curated signals from our research.
-            <b> Deploy to Vercel/Netlify</b> for 24/7 live feeds.
+            <b>Demo Mode</b> — Live API calls unavailable.
+            Showing curated real signals from our research.
           </div>
         )}
 
