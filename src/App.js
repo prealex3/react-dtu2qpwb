@@ -53,7 +53,7 @@ const PROXIES = [
 const SOURCES = {
   FDA:       "https://api.fda.gov/drug/drugsfda.json",
   EMA_ORPHAN:"https://www.ema.europa.eu/en/documents/report/medicines-output-orphan_designations-json-report_en.json",
-  EMA_MEDS:  "https://www.ema.europa.eu/en/documents/report/medicines-output-medicines_json-report_en.json",
+  EMA_MEDS:  "/ema-medicines.json",  // Local file — EMA blocks datacenter IPs. Manual weekly update.
 };
 
 // ─── PDUFA CALENDAR ───────────────────────────────────────────────────────────
@@ -507,8 +507,12 @@ function parseEMAMeds(data, maxAge) {
   const records = Array.isArray(data) ? data : (data?.data || []);
   const out = [];
   for (const r of records) {
+    if (r.category !== "Human") continue;          // Skip veterinary medicines
     if (r.medicine_status !== "Authorised") continue;
-    const dateStr = r.european_commission_decision_date || r.marketing_authorisation_date || r.opinion_adopted_date || "";
+    if (r.generic === "Yes") continue;             // Skip generics — no investment signal
+    // Use marketing_authorisation_date (real approval), NOT european_commission_decision_date
+    // (EC date updates on administrative changes — would show 2011 drugs as "new")
+    const dateStr = r.marketing_authorisation_date || "";
     if (!dateStr) continue;
     const age = daysAgo(dateStr);
     if (age === null || age > maxAge) continue;
@@ -560,6 +564,7 @@ function parseCHMPOpinions(data, maxAge) {
   const records = Array.isArray(data) ? data : (data?.data || []);
   const out = [];
   for (const r of records) {
+if (r.category !== "Human") continue;          // Skip veterinary medicines
     if (r.opinion_status !== "Positive") continue;
     if (r.medicine_status === "Authorised") continue;
 
