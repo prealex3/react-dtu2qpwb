@@ -40,7 +40,7 @@ function LoginScreen({ onLogin }) {
 }
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
-const VERCEL_PROXY = '/.netlify/functions/proxy?url=';
+const VERCEL_PROXY = '/api/proxy?url=';
 
 const PROXIES = [
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
@@ -289,14 +289,14 @@ async function tryFetch(url, timeoutMs = 9000) {
       const r = await fetch(url, { signal: ctrl.signal });
       clearTimeout(t);
       if (r.ok) return await r.json();
-      throw new Error(`Local file fetch failed: ${r.status}`);
+      throw new Error(`Local file HTTP ${r.status}`);
     } catch (e) {
       clearTimeout(t);
-      throw new Error(`Local file error: ${e.message}`);
+      throw new Error(`Local file: ${e.message}`);
     }
   }
 
-  // Remote URLs go through proxy chain
+  // Remote URLs go through the proxy chain
   for (const makeURL of PROXIES) {
     try {
       const full = makeURL(url);
@@ -526,8 +526,8 @@ function parseEMAMeds(data, maxAge) {
     if (r.category !== "Human") continue;          // Skip veterinary medicines
     if (r.medicine_status !== "Authorised") continue;
     if (r.generic === "Yes") continue;             // Skip generics — no investment signal
-    // Use marketing_authorisation_date (real approval), NOT european_commission_decision_date
-    // (EC date updates on administrative changes — would show 2011 drugs as "new")
+    // Use marketing_authorisation_date (real approval date), NOT european_commission_decision_date.
+    // EC date updates on administrative changes — would surface 2011 drugs as "new signals".
     const dateStr = r.marketing_authorisation_date || "";
     if (!dateStr) continue;
     const age = daysAgo(dateStr);
@@ -580,7 +580,7 @@ function parseCHMPOpinions(data, maxAge) {
   const records = Array.isArray(data) ? data : (data?.data || []);
   const out = [];
   for (const r of records) {
-if (r.category !== "Human") continue;          // Skip veterinary medicines
+    if (r.category !== "Human") continue;          // Skip veterinary medicines
     if (r.opinion_status !== "Positive") continue;
     if (r.medicine_status === "Authorised") continue;
 
