@@ -281,6 +281,22 @@ function daysAgo(dateStr) {
 }
 
 async function tryFetch(url, timeoutMs = 9000) {
+  // Local files (starting with /) are fetched directly — no proxy needed
+  if (url.startsWith("/")) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (r.ok) return await r.json();
+      throw new Error(`Local file fetch failed: ${r.status}`);
+    } catch (e) {
+      clearTimeout(t);
+      throw new Error(`Local file error: ${e.message}`);
+    }
+  }
+
+  // Remote URLs go through proxy chain
   for (const makeURL of PROXIES) {
     try {
       const full = makeURL(url);
