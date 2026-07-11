@@ -40,7 +40,7 @@ function LoginScreen({ onLogin }) {
 }
 
 // ─── CORS PROXIES ─────────────────────────────────────────────────────────────
-const VERCEL_PROXY = '/api/proxy?url=';
+const VERCEL_PROXY = '/.netlify/functions/proxy?url=';
 
 const PROXIES = [
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
