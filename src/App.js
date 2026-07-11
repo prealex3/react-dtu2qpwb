@@ -1,4 +1,4 @@
-import const APP_PASSWORD = process.env.REACT_APP_PASSWORD;
+const APP_PASSWORD = process.env.REACT_APP_PASSWORD;
 
 function LoginScreen({ onLogin }) {
   const [pw, setPw] = React.useState('');
